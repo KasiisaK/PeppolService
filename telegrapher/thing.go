@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/sdoque/mbaigo/components"
@@ -43,8 +44,8 @@ type Traits struct {
 	Pattern  []string    `json:"pattern"`
 	Username string      `json:"username"`
 	Password string      `json:"password"`
+	Topic    string      `json:"-"`      // Topic is the MQTT topic to which the unit asset subscribes or publishes
 	Period   int         `json:"period"` // Period is the time interval for periodic service consumption, e.g., 30 seconds
-	Topic    string      `json:"-"`      // Topic is the MQTT topic to which the unit asset subscribes
 	Message  []byte      `json:"-"`
 }
 
@@ -106,6 +107,7 @@ func initTemplate() components.UnitAsset {
 		Password: "password",
 		// Topic:    "kitchen/temperature", // Default topics
 		Pattern: []string{"Room"}, // Default patterns e.g. "House", "Room" as in "MyHouse/Kitchen"
+		Period:  -1,               // a negative value indicates that the unit asset subscribe to the topic and does not publish periodically
 	}
 
 	uat := &UnitAsset{
@@ -127,10 +129,10 @@ func newResource(configuredAsset usecases.ConfigurableAsset, sys *components.Sys
 	assetName := strings.ReplaceAll(topic, "/", "_")
 	// instantiate the unit asset
 	ua := &UnitAsset{
-		Name:        assetName,
-		Owner:       sys,
-		Details:     configuredAsset.Details,
-		ServicesMap: usecases.MakeServiceMap(configuredAsset.Services),
+		Name:    assetName,
+		Owner:   sys,
+		Details: configuredAsset.Details,
+		// ServicesMap: usecases.MakeServiceMap(configuredAsset.Services),
 	}
 
 	traits, err := UnmarshalTraits(configuredAsset.Traits)
@@ -140,47 +142,55 @@ func newResource(configuredAsset usecases.ConfigurableAsset, sys *components.Sys
 		ua.Traits = traits[0] // or handle multiple traits if needed
 	}
 
-	if len(ua.Pattern) > 0 {
-		lastSlashIndex := strings.LastIndex(topic, "/")
-		if lastSlashIndex == -1 {
-			fmt.Printf("topic %s has no forward slash and is ignored\n", topic)
-			return nil, func() {}
-		}
-		a := topic[:lastSlashIndex]
-		s := topic[lastSlashIndex+1:]
+	ua.Topic = topic
+	// Validate the traits and topic
+	if len(ua.Pattern) <= 0 {
+		log.Fatal("Error: UnitAsset must have at least one pattern defined in Traits")
+	}
+	lastSlashIndex := strings.LastIndex(topic, "/")
+	if lastSlashIndex == -1 {
+		fmt.Printf("topic %s has no forward slash and is ignored\n", topic)
+		return nil, func() {}
+	}
+	asset := topic[:lastSlashIndex]
+	service := topic[lastSlashIndex+1:]
 
-		// Fill Details from pattern and topic
-		metaDetails := strings.Split(a, "/")
-		if ua.Details == nil {
-			ua.Details = make(map[string][]string)
-		}
-		for i := 0; i < len(ua.Pattern) && i < len(metaDetails); i++ {
-			ua.Details[ua.Pattern[i]] = append(ua.Details[ua.Pattern[i]], metaDetails[i])
-		}
+	// Fill Details from pattern and topic
+	metaDetails := strings.Split(asset, "/")
+	if ua.Details == nil {
+		ua.Details = make(map[string][]string)
+	}
+	for i := 0; i < len(ua.Pattern) && i < len(metaDetails); i++ {
+		ua.Details[ua.Pattern[i]] = append(ua.Details[ua.Pattern[i]], metaDetails[i])
+	}
 
+	// Make the topic an Arrowhead service (since we are subscribing to it)
+	if ua.Period < 0 {
 		access := components.Service{
-			Definition:  s,
+			Definition:  service,
 			SubPath:     "access",
 			Details:     map[string][]string{"forms": {"mqttPayload"}},
 			RegPeriod:   30,
 			Description: "Read the current topic message (GET) or publish to it (PUT)",
 		}
+		if ua.ServicesMap == nil {
+			ua.ServicesMap = make(components.Services)
+		}
 		ua.ServicesMap[access.SubPath] = &access
+	}
 
-		// If the unit asset has a period defined, instantiate the consumed services
-		// if ua.Period > 0 {
-		// 	sProtocols := components.SProtocols(sys.Husk.ProtoPort)
-		// 	t := &components.Cervice{
-		// 		Definition: s,
-		// 		Protos:     sProtocols,
-		// 		Nodes:      make(map[string][]string), // ✅ Corrected
-		// 	}
-		// 	if ua.CervicesMap == nil {
-		// 		ua.CervicesMap = make(components.Cervices)
-		// 	}
-		// 	ua.CervicesMap[t.Definition] = t
-		// }
-
+	// Make the topic a consumed service to be published (since we are consuming it)
+	if ua.Period >= 0 {
+		sProtocols := components.SProtocols(sys.Husk.ProtoPort)
+		newCervice := &components.Cervice{
+			Definition: service,
+			Protos:     sProtocols,
+			Nodes:      make(map[string][]string),
+		}
+		if ua.CervicesMap == nil {
+			ua.CervicesMap = make(components.Cervices)
+		}
+		ua.CervicesMap[newCervice.Definition] = newCervice
 	}
 
 	// Create MQTT client options
@@ -197,7 +207,7 @@ func newResource(configuredAsset usecases.ConfigurableAsset, sys *components.Sys
 		log.Println("MQTT connection established")
 	})
 
-	// Create and start the MQTT client
+	// Create and start the MQTT connection
 	log.Println("Connecting to broker:", ua.Traits.Broker)
 	ua.mClient = mqtt.NewClient(opts)
 	if token := ua.mClient.Connect(); token.Wait() && token.Error() != nil {
@@ -206,49 +216,62 @@ func newResource(configuredAsset usecases.ConfigurableAsset, sys *components.Sys
 
 	log.Println("Connected to MQTT broker")
 
-	// Define the message handler callback
-	messageHandler := func(client mqtt.Client, msg mqtt.Message) {
-		fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+	// Define the message handler callback if subscribing to a topic
+	if ua.Period < 0 {
+		messageHandler := func(client mqtt.Client, msg mqtt.Message) {
+			fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
 
-		// Ensure the map is initialized (just in case)
-		if messageList == nil {
-			messageList = make(map[string][]byte)
+			// Ensure the map is initialized (just in case)
+			if messageList == nil {
+				messageList = make(map[string][]byte)
+			}
+			ua.Message = msg.Payload() // Assign message to topic in the map
 		}
-		ua.Message = msg.Payload() // Assign message to topic in the map
-	}
 
-	// Subscribe to the topic
-	if token := ua.mClient.Subscribe(topic, 0, messageHandler); token.Wait() && token.Error() != nil {
-		log.Fatalf("Error subscribing to topic: %v", token.Error())
+		// Subscribe to the topic
+		if token := ua.mClient.Subscribe(topic, 0, messageHandler); token.Wait() && token.Error() != nil {
+			log.Fatalf("Error subscribing to topic: %v", token.Error())
+		}
+		fmt.Printf("Subscribed to topic: %s\n", topic)
 	}
-	fmt.Printf("Subscribed to topic: %s\n", topic)
-
 	// Periodically publish a message to the topic
-	// if ua.Period > 0 {
-	// 	go func(ua *UnitAsset) {
-	// 		ticker := time.NewTicker(time.Duration(ua.Period) * time.Second)
-	// 		defer ticker.Stop()
-	// 		for {
-	// 			select {
-	// 			case <-ticker.C:
-	// 				payload := map[string]interface{}{
-	// 					"value":     0,
-	// 					"unit":      "celsius",
-	// 					"timestamp": time.Now().Format(time.RFC3339),
-	// 					"version":   "SignalA_v1.0",
-	// 				}
-	// 				if err := ua.publishToTopic(payload, "application/json"); err != nil {
-	// 					log.Printf("Periodic publish failed for topic %s: %v", ua.Topic, err)
-	// 				} else {
-	// 					log.Printf("Periodic message sent to topic %s", ua.Topic)
-	// 				}
-	// 			case <-sys.Ctx.Done():
-	// 				log.Printf("Stopping periodic publishing for %s", ua.Topic)
-	// 				return
-	// 			}
-	// 		}
-	// 	}(ua)
-	// }
+	if ua.Period > 0 {
+		go func(ua *UnitAsset) {
+			ticker := time.NewTicker(time.Duration(ua.Period) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					// payload := map[string]interface{}{
+					// 	"value":     0,
+					// 	"unit":      "celsius",
+					// 	"timestamp": time.Now().Format(time.RFC3339),
+					// 	"version":   "SignalA_v1.0",
+					// }
+					payload, err := usecases.GetState(ua.CervicesMap[service], ua.Owner)
+					if err != nil {
+						log.Printf("\nUnable to obtain a %s reading with error %s\n", service, err)
+						continue // return fmt.Errorf("unsupported measurement: %s", name)
+					}
+					fmt.Printf("%+v\n", payload)
+					// tup, ok := payload.(*forms.SignalA_v1a)
+					// if !ok {
+					// 	log.Println("Problem unpacking the signal form")
+					// 	continue // return fmt.Errorf("problem unpacking measurement: %s", name)
+					// }
+					// message, err := usecases.Pack(payload, "application/json")
+					// if err := ua.publishToTopic(message, "application/json"); err != nil {
+					// 	log.Printf("Periodic publish failed for topic %s: %v", ua.Topic, err)
+					// } else {
+					// 	log.Printf("Periodic message sent to topic %s", ua.Topic)
+					// }
+				case <-sys.Ctx.Done():
+					log.Printf("Stopping periodic publishing for %s", ua.Topic)
+					return
+				}
+			}
+		}(ua)
+	}
 
 	return ua, func() {
 		log.Println("Disconnecting from MQTT broker")
@@ -278,21 +301,21 @@ func (ua *UnitAsset) publishToTopic(payload map[string]interface{}, contentType 
 	}
 
 	// Serialize the message based on content type
-	// var data []byte
-	// var err error
-	// switch contentType {
-	// case "application/json":
-	// 	data, err = json.Marshal(payload)
-	// default:
-	// 	// Fallback to JSON encoding for now
-	// 	data, err = json.Marshal(payload)
-	// }
-	// if err != nil {
-	// 	return fmt.Errorf("failed to encode payload: %w", err)
-	// }
+	var data []byte
+	var err error
+	switch contentType {
+	case "application/json":
+		data, err = json.Marshal(payload)
+	default:
+		// Fallback to JSON encoding for now
+		data, err = json.Marshal(payload)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to encode payload: %w", err)
+	}
 	log.Println(contentType)
 
-	token := ua.mClient.Publish(ua.Topic, 0, false, payload)
+	token := ua.mClient.Publish(ua.Topic, 0, false, data)
 	token.Wait()
 	if token.Error() != nil {
 		return fmt.Errorf("publish error: %w", token.Error())

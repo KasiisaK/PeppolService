@@ -22,7 +22,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
+
 	"time"
 
 	"github.com/sdoque/mbaigo/components"
@@ -32,6 +32,11 @@ import (
 
 //-------------------------------------Define the Thing's resource
 
+// Traits are Asset-specific configurable parameters and variables
+type Traits struct {
+	leadingRegistrar string
+}
+
 // UnitAsset type models the unit asset (interface) of the system.
 type UnitAsset struct {
 	Name        string              `json:"name"`
@@ -40,7 +45,7 @@ type UnitAsset struct {
 	ServicesMap components.Services `json:"-"`
 	CervicesMap components.Cervices `json:"-"`
 	//
-	leadingRegistrar *components.CoreSystem
+	Traits
 }
 
 // GetName returns the name of the Resource.
@@ -63,6 +68,11 @@ func (ua *UnitAsset) GetDetails() map[string][]string {
 	return ua.Details
 }
 
+// GetTraits returns the traits of the Resource.
+func (ua *UnitAsset) GetTraits() any {
+	return ua.Traits
+}
+
 // ensure UnitAsset implements components.UnitAsset (this check is done at during the compilation)
 var _ components.UnitAsset = (*UnitAsset)(nil)
 
@@ -78,10 +88,15 @@ func initTemplate() components.UnitAsset {
 		Description: "looks for the desired service described in a quest form (POST)",
 	}
 
-	// var uat components.UnitAsset // this is an interface, which we then initialize
+	assetTraits := Traits{
+		leadingRegistrar: "", // Initialize the leading registrar to nil
+	}
+
+	// create the unit asset template
 	uat := &UnitAsset{
 		Name:    "orchestration",
 		Details: map[string][]string{"Platform": {"Independent"}},
+		Traits:  assetTraits,
 		ServicesMap: components.Services{
 			squest.SubPath: &squest, // Inline assignment of the temperature service
 		},
@@ -92,13 +107,20 @@ func initTemplate() components.UnitAsset {
 //-------------------------------------Instantiate the unit assets based on configuration
 
 // newResource creates the Resource resource with its pointers and channels based on the configuration using the template
-func newResource(uac UnitAsset, sys *components.System, servs []components.Service) (components.UnitAsset, func()) {
+func newResource(configuredAsset usecases.ConfigurableAsset, sys *components.System) (components.UnitAsset, func()) {
 	// var ua components.UnitAsset // this is an interface, which we then initialize
 	ua := &UnitAsset{ // this is an interface, which we then initialize
-		Name:        uac.Name,
+		Name:        configuredAsset.Name,
 		Owner:       sys,
-		Details:     uac.Details,
-		ServicesMap: components.CloneServices(servs),
+		Details:     configuredAsset.Details,
+		ServicesMap: usecases.MakeServiceMap(configuredAsset.Services),
+	}
+
+	traits, err := UnmarshalTraits(configuredAsset.Traits)
+	if err != nil {
+		log.Println("Warning: could not unmarshal traits:", err)
+	} else if len(traits) > 0 {
+		ua.Traits = traits[0] // or handle multiple traits if needed
 	}
 
 	// start the unit asset(s)
@@ -109,12 +131,27 @@ func newResource(uac UnitAsset, sys *components.System, servs []components.Servi
 	}
 }
 
+// UnmarshalTraits unmarshals a slice of json.RawMessage into a slice of Traits.
+func UnmarshalTraits(rawTraits []json.RawMessage) ([]Traits, error) {
+	var traitsList []Traits
+	for _, raw := range rawTraits {
+		var t Traits
+		if err := json.Unmarshal(raw, &t); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal trait: %w", err)
+		}
+		traitsList = append(traitsList, t)
+	}
+	return traitsList, nil
+}
+
 //-------------------------------------Thing's resource functions
 
 // getServiceURL retrieves the service URL for a given ServiceQuest_v1.
 // It first checks if the leading registrar is still valid and updates it if necessary.
-// If no leading registrar is found, it iterates through the system's core services to find one.
-// Once a valid registrar is found, it sends a query to the registrar to get the service URL.
+// If no leading registrar is found, it iterates through the system's core services
+// to find one.
+// Once a valid registrar is found, it sends a query to the registrar to get the
+// service URL.
 //
 // Parameters:
 // - newQuest: The ServiceQuest_v1 containing the service request details.
@@ -123,116 +160,57 @@ func newResource(uac UnitAsset, sys *components.System, servs []components.Servi
 // - servLoc: A byte slice containing the service location in JSON format.
 // - err: An error if any issues occur during the process.
 func (ua *UnitAsset) getServiceURL(newQuest forms.ServiceQuest_v1) (servLoc []byte, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // Create a new context, with a 2-second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	sys := ua.Owner
-	if ua.leadingRegistrar != nil {
-
-		// verify that this leading registrar is still leading
-		resp, errs := http.Get(ua.leadingRegistrar.Url + "/status")
-		if errs != nil {
-			log.Println("lost leading registrar status:", errs)
-			ua.leadingRegistrar = nil
-			err = errs
-			return // Skip to the next iteration of the loop
-		}
-
-		// Read from status resp.Body and then close it directly after
-		bodyBytes, errs := io.ReadAll(resp.Body)
-		resp.Body.Close() // Close the body directly after reading from it
-		if errs != nil {
-			log.Println("\rError reading response from leading registrar:", errs)
-			ua.leadingRegistrar = nil
-			err = errs
-			return // Skip to the next iteration of the loop
-		}
-
-		// reset the pointer if the registrar lost its leading status
-		if !strings.HasPrefix(string(bodyBytes), "lead Service Registrar since") {
-			ua.leadingRegistrar = nil
-			log.Println("lost previous leading registrar")
-		}
-	} else {
-		for _, cSys := range sys.CoreS {
-			core := cSys
-			if core.Name == "serviceregistrar" {
-				resp, err := http.Get(core.Url + "/status")
-				if err != nil {
-					fmt.Println("Error checking service registrar status:", err)
-					ua.leadingRegistrar = nil // clear the leading registrar record
-					continue                  // Skip to the next iteration of the loop
-				}
-
-				// Read from resp.Body and then close it directly after
-				bodyBytes, err := io.ReadAll(resp.Body)
-				resp.Body.Close() // Close the body directly after reading from it
-				if err != nil {
-					fmt.Println("Error reading service registrar response body:", err)
-					continue // Skip to the next iteration of the loop
-				}
-
-				if strings.HasPrefix(string(bodyBytes), "lead Service Registrar since") {
-					ua.leadingRegistrar = core
-					fmt.Printf("\nlead registrar found at: %s\n", ua.leadingRegistrar.Url)
-				}
-			}
+	if ua.leadingRegistrar == "" {
+		ua.leadingRegistrar, err = components.GetRunningCoreSystemURL(sys, "serviceregistrar")
+		if err != nil {
+			return servLoc, err
 		}
 	}
 
 	// Create a new HTTP request to the the Service Registrar
-
-	// Create buffer to save a copy of the request body
 	mediaType := "application/json"
 	jsonQF, err := usecases.Pack(&newQuest, mediaType)
 	if err != nil {
-		log.Printf("problem encountered when marshalling the service quest\n")
 		return servLoc, err
 	}
 
-	srURL := ua.leadingRegistrar.Url + "/query"
+	srURL := ua.leadingRegistrar + "/query"
 	req, err := http.NewRequest(http.MethodPost, srURL, bytes.NewBuffer(jsonQF))
 	if err != nil {
 		return servLoc, err
 	}
-	req.Header.Set("Content-Type", mediaType) // set the Content-Type header
-	req = req.WithContext(ctx)                // associate the cancellable context with the request
+	req.Header.Set("Content-Type", mediaType)
+	req = req.WithContext(ctx)
 
-	// forward the request to the leading Service Registrar/////////////////////////////////
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		ua.leadingRegistrar = nil
+		ua.leadingRegistrar = ""
 		return servLoc, err
 	}
 	defer resp.Body.Close()
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Error reading discovery response body: %v", err)
 		return servLoc, err
 	}
-	fmt.Printf("\n%v\n", string(respBytes))
 	serviceListf, err := usecases.Unpack(respBytes, mediaType)
 	if err != nil {
-		log.Print("Error extracting discovery reply ", err)
 		return servLoc, err
 	}
 
-	// Perform a type assertion to convert the returned Form to SignalA_v1a
 	serviceList, ok := serviceListf.(*forms.ServiceRecordList_v1)
 	if !ok {
-		log.Println("problem asserting the type of the service list form")
-		return
+		return nil, fmt.Errorf("problem asserting the type of the service list form")
 	}
 
 	if len(serviceList.List) == 0 {
-		err = fmt.Errorf("unable to locate any such service: %s", newQuest.ServiceDefinition)
-		return
+		return nil, fmt.Errorf("unable to locate any such service: %s", newQuest.ServiceDefinition)
 	}
 
-	fmt.Printf("/n the length of the service list is: %d\n", len(serviceList.List))
 	serviceLocation := selectService(*serviceList)
 	payload, err := json.MarshalIndent(serviceLocation, "", "  ")
-	fmt.Printf("the service location is %+v\n", serviceLocation)
 	return payload, err
 }
 
@@ -245,4 +223,58 @@ func selectService(serviceList forms.ServiceRecordList_v1) (sp forms.ServicePoin
 	sp.ServLocation = "http://" + rec.IPAddresses[0] + ":" + strconv.Itoa(rec.ProtoPort["http"]) + "/" + rec.SystemName + "/" + rec.SubPath
 	sp.ServNode = rec.ServiceNode
 	return
+}
+
+func (ua *UnitAsset) getServicesURL(newQuest forms.ServiceQuest_v1) (servLoc []byte, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	sys := ua.Owner
+	if ua.leadingRegistrar == "" {
+		ua.leadingRegistrar, err = components.GetRunningCoreSystemURL(sys, "serviceregistrar")
+		if err != nil {
+			return servLoc, err
+		}
+	}
+
+	// Create a new HTTP request to the the Service Registrar
+	mediaType := "application/json"
+	jsonQF, err := usecases.Pack(&newQuest, mediaType)
+	if err != nil {
+		return servLoc, err
+	}
+
+	srURL := ua.leadingRegistrar + "/query"
+	req, err := http.NewRequest(http.MethodPost, srURL, bytes.NewBuffer(jsonQF))
+	if err != nil {
+		return servLoc, err
+	}
+	req.Header.Set("Content-Type", mediaType)
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		ua.leadingRegistrar = ""
+		return servLoc, err
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return servLoc, err
+	}
+	serviceListf, err := usecases.Unpack(respBytes, mediaType)
+	if err != nil {
+		return servLoc, err
+	}
+
+	serviceList, ok := serviceListf.(*forms.ServiceRecordList_v1)
+	if !ok {
+		return nil, fmt.Errorf("problem asserting the type of the service list form")
+	}
+
+	if len(serviceList.List) == 0 {
+		return nil, fmt.Errorf("unable to locate any such service: %s", newQuest.ServiceDefinition)
+	}
+
+	payload, err := json.MarshalIndent(serviceList, "", "  ")
+	return payload, err
 }

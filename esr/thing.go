@@ -17,9 +17,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -36,10 +38,22 @@ type ServiceRegistryRequest struct {
 	Record forms.Form
 	Id     int64
 	Result chan []forms.ServiceRecord_v1 // For returning records
-	Error  chan error                    // For error handling
+	Error  chan error
 }
 
-//-------------------------------------Define the unit asset
+// -------------------------------------Define the unit asset
+// Traits are Asset-specific configurable parameters and variables
+type Traits struct {
+	serviceRegistry map[int]forms.ServiceRecord_v1
+
+	recCount int64
+	requests chan ServiceRegistryRequest
+	// Error            chan error // For error handling
+	sched            *Scheduler
+	leading          bool
+	leadingSince     time.Time
+	leadingRegistrar *components.CoreSystem // if not leading this points to the current leader
+}
 
 // UnitAsset type models the unit asset (interface) of the system
 type UnitAsset struct {
@@ -49,14 +63,8 @@ type UnitAsset struct {
 	ServicesMap components.Services `json:"-"`
 	CervicesMap components.Cervices `json:"-"`
 	//
-	serviceRegistry  map[int]forms.ServiceRecord_v1
-	mu               sync.Mutex
-	recCount         int64
-	requests         chan ServiceRegistryRequest
-	sched            *Scheduler
-	leading          bool
-	leadingSince     time.Time
-	leadingRegistrar *components.CoreSystem // if not leading this points to the current leader
+	Traits
+	mu sync.Mutex
 }
 
 // GetName returns the name of the Resource.
@@ -77,6 +85,11 @@ func (ua *UnitAsset) GetCervices() components.Cervices {
 // GetDetails returns the details of the Resource.
 func (ua *UnitAsset) GetDetails() map[string][]string {
 	return ua.Details
+}
+
+// GetTraits returns the traits of the Resource.
+func (ua *UnitAsset) GetTraits() any {
+	return ua.Traits
 }
 
 // ensure UnitAsset implements components.UnitAsset (this check is done at during the compilation)
@@ -115,10 +128,10 @@ func initTemplate() components.UnitAsset {
 		Description: "reports (GET) the role of the Service Registrar as leading or on stand by",
 	}
 
-	// var uat components.UnitAsset // this is an interface, which we then initialize
+	// Create the UnitAsset with the defined services
 	uat := &UnitAsset{
 		Name:    "registry",
-		Details: map[string][]string{"Location": {"LocalCloud"}},
+		Details: map[string][]string{"Type": {"ephemeral"}},
 		ServicesMap: components.Services{
 			registerService.SubPath:   &registerService,
 			queryService.SubPath:      &queryService,
@@ -132,33 +145,61 @@ func initTemplate() components.UnitAsset {
 //-------------------------------------Instantiate unit asset(s) based on configuration
 
 // newResource creates the unit asset with its pointers and channels based on the configuration using the uaConfig structs
-func newResource(uac UnitAsset, sys *components.System, servs []components.Service) (components.UnitAsset, func()) {
+func newResource(configuredAsset usecases.ConfigurableAsset, sys *components.System) (components.UnitAsset, func()) {
 	// Start the registration expiration check scheduler
 	cleaningScheduler := NewScheduler()
-	go cleaningScheduler.run()
 
 	// Initialize the UnitAsset
 	ua := &UnitAsset{
-		Name:            uac.Name,
-		Owner:           sys,
-		Details:         uac.Details,
+		Name:        configuredAsset.Name,
+		Owner:       sys,
+		Details:     configuredAsset.Details,
+		ServicesMap: usecases.MakeServiceMap(configuredAsset.Services),
+	}
+
+	traits, err := UnmarshalTraits(configuredAsset.Traits)
+	if err != nil {
+		log.Println("Warning: could not unmarshal traits:", err)
+	} else if len(traits) > 0 {
+		ua.Traits = traits[0] // or handle multiple traits if needed
+	}
+
+	assetTraits := Traits{
 		serviceRegistry: make(map[int]forms.ServiceRecord_v1),
 		recCount:        1, // 0 is used for non registered services
 		sched:           cleaningScheduler,
-		ServicesMap:     components.CloneServices(servs),
 		requests:        make(chan ServiceRegistryRequest), // Initialize the requests channel
+		// Error:           make(chan error),                  // Initialize the error channel
 	}
 
-	ua.Role() // Start to repeatedly check which is the leading registrar
+	ua.Traits = assetTraits // Assign the traits to the UnitAsset
+
+	// Start to repeatedly check which is the leading registrar
+	ua.Role()
 
 	// Start the service registry manager goroutine
 	go ua.serviceRegistryHandler()
 
 	return ua, func() {
+		ua.mu.Lock()
 		close(ua.requests)       // Close channels before exiting (cleanup)
 		cleaningScheduler.Stop() // Gracefully stop the scheduler
+		ua.mu.Unlock()
 		log.Println("Closing the service registry database connection")
 	}
+}
+
+// UnmarshalTraits unmarshals a slice of json.RawMessage into a slice of Traits.
+func UnmarshalTraits(rawTraits []json.RawMessage) ([]Traits, error) {
+	var traitsList []Traits
+	for _, raw := range rawTraits {
+		var t Traits
+		if err := json.Unmarshal(raw, &t); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal trait: %w", err)
+		}
+		traitsList = append(traitsList, t)
+	}
+	return traitsList, nil
 }
 
 //-------------------------------------Unit's resource methods
@@ -179,6 +220,11 @@ func (ua *UnitAsset) serviceRegistryHandler() {
 				continue
 			}
 			ua.mu.Lock() // Lock the serviceRegistry map
+
+			// Check if the ID exists in the serviceRegistry
+			if _, exists := ua.serviceRegistry[rec.Id]; !exists {
+				rec.Id = 0
+			}
 
 			if rec.Id == 0 {
 				// In the case recCount had looped, check that there is no record at that position
@@ -201,11 +247,6 @@ func (ua *UnitAsset) serviceRegistryHandler() {
 				log.Printf("The new service %s from system %s has been registered\n", rec.ServiceDefinition, rec.SystemName)
 			} else {
 				// Validate and update existing record
-				_, exists := ua.serviceRegistry[rec.Id]
-				if !exists {
-					ua.mu.Unlock()
-					continue
-				}
 				dbRec := ua.serviceRegistry[rec.Id]
 				if dbRec.ServiceDefinition != rec.ServiceDefinition {
 					request.Error <- errors.New("mismatch between definition received record and database record")
@@ -236,7 +277,6 @@ func (ua *UnitAsset) serviceRegistryHandler() {
 				}
 				nextExpiration := now.Add(time.Duration(dbRec.RegLife) * time.Second).Format(time.RFC3339)
 				rec.EndOfValidity = nextExpiration
-				// log.Printf("Updated the record %s with next expiration date at %s", rec.ServiceDefinition, rec.EndOfValidity)
 			}
 			ua.sched.AddTask(now.Add(time.Duration(rec.RegLife)*time.Second), func() { checkExpiration(ua, rec.Id) }, rec.Id)
 			ua.serviceRegistry[rec.Id] = *rec // Add record to the registry
@@ -254,28 +294,38 @@ func (ua *UnitAsset) serviceRegistryHandler() {
 				}
 				ua.mu.Unlock() // Unlock access to the service registry map
 				request.Result <- result
-				// log.Println("complete listing sent from registry")
 				continue
 			}
 			qform, ok := request.Record.(*forms.ServiceQuest_v1)
 			if !ok {
-				fmt.Println("Problem unpacking the service quest request")
+				log.Println("Problem unpacking the service quest request")
 				request.Error <- fmt.Errorf("invalid record type")
 				continue
 			}
-			fmt.Printf("\nThe service quest form is %v\n\n", qform)
 			matchingRecords := ua.FilterByServiceDefinitionAndDetails(qform.ServiceDefinition, qform.Details)
 			request.Result <- matchingRecords
 
 		case "delete":
 			// Handle delete record
+			ua.mu.Lock()
+			ua.sched.RemoveTask(int(request.Id))
 			delete(ua.serviceRegistry, int(request.Id))
 			if _, exists := ua.serviceRegistry[int(request.Id)]; !exists {
 				log.Printf("The service with ID %d has been deleted.", request.Id)
 			}
+			ua.mu.Unlock()
 			request.Error <- nil // Send success response
 		}
 	}
+}
+
+func compareDetails(reqDetails []string, availDetails []string) bool {
+	for _, requiredValue := range reqDetails {
+		if slices.Contains(availDetails, requiredValue) {
+			return true
+		}
+	}
+	return false
 }
 
 // FilterByServiceDefinitionAndDetails returns a list of services with the given service definition and details TODO: protocols
@@ -298,20 +348,7 @@ func (ua *UnitAsset) FilterByServiceDefinitionAndDetails(desiredDefinition strin
 				}
 
 				// Ensure at least one value in requiredDetails matches record.Details
-				valueMatch := false
-				for _, requiredValue := range values {
-					for _, recordValue := range recordValues {
-						if recordValue == requiredValue {
-							valueMatch = true
-							break
-						}
-					}
-					if valueMatch {
-						break
-					}
-				}
-
-				if !valueMatch {
+				if !compareDetails(values, recordValues) {
 					matchesAllDetails = false
 					break
 				}
@@ -328,10 +365,12 @@ func (ua *UnitAsset) FilterByServiceDefinitionAndDetails(desiredDefinition strin
 
 // checkExpiration checks if a service has expired and deletes it if it has.
 func checkExpiration(ua *UnitAsset, servId int) {
+	ua.mu.Lock()
+	defer ua.mu.Unlock()
 	dbRec := ua.serviceRegistry[servId]
 	expiration, err := time.Parse(time.RFC3339, dbRec.EndOfValidity)
 	if err != nil {
-		log.Printf("time parsing problem when checking service expiration")
+		log.Printf("Time parsing problem when checking service expiration")
 		return
 	}
 
@@ -340,6 +379,7 @@ func checkExpiration(ua *UnitAsset, servId int) {
 			return
 		}
 		delete(ua.serviceRegistry, int(servId))
+		ua.sched.RemoveTask(int(servId))
 		if _, exists := ua.serviceRegistry[servId]; !exists {
 			log.Printf("The service with ID %d has been deleted because it was not renewed.", servId)
 		}
@@ -353,14 +393,13 @@ func getUniqueSystems(ua *UnitAsset) (*forms.SystemRecordList_v1, error) {
 
 	ua.mu.Lock() // Ensure thread safety
 	defer ua.mu.Unlock()
-
 	for _, record := range ua.serviceRegistry {
 		var sAddress string
 
 		// Check for HTTPS
-		if port, exists := record.ProtoPort["https"]; exists && port != 0 {
+		if port := record.ProtoPort["https"]; port != 0 {
 			sAddress = "https://" + record.IPAddresses[0] + ":" + strconv.Itoa(port) + "/" + record.SystemName
-		} else if port, exists := record.ProtoPort["http"]; exists && port != 0 { // Check for HTTP
+		} else if port := record.ProtoPort["http"]; port != 0 { // Check for HTTP
 			sAddress = "http://" + record.IPAddresses[0] + ":" + strconv.Itoa(port) + "/" + record.SystemName
 		} else {
 			fmt.Printf("Warning: %s cannot be modeled\n", record.SystemName)

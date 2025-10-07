@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -39,6 +40,14 @@ func main() {
 		Details:     map[string][]string{"Developer": {"Arrowhead"}},
 		ProtoPort:   map[string]int{"https": 0, "http": 20151, "coap": 0},
 		InfoLink:    "https://github.com/sdoque/systems/tree/main/parallax",
+		DName: pkix.Name{
+			CommonName:         sys.Name,
+			Organization:       []string{"Synecdoque"},
+			OrganizationalUnit: []string{"Systems"},
+			Locality:           []string{"Luleå"},
+			Province:           []string{"Norrbotten"},
+			Country:            []string{"SE"},
+		},
 	}
 
 	// instantiate a template unit asset
@@ -47,20 +56,21 @@ func main() {
 	sys.UAssets[assetName] = &assetTemplate
 
 	// Configure the system
-	rawResources, servsTemp, err := usecases.Configure(&sys)
+	rawResources, err := usecases.Configure(&sys)
 	if err != nil {
 		log.Fatalf("Configuration error: %v\n", err)
 	}
 
 	sys.UAssets = make(map[string]*components.UnitAsset) // clear the unit asset map (from the template)
-	//	Resources := make(map[string]*UnitAsset)
+	var cleanups []func()
 	for _, raw := range rawResources {
-		var uac UnitAsset
+		var uac usecases.ConfigurableAsset
 		if err := json.Unmarshal(raw, &uac); err != nil {
 			log.Fatalf("Resource configuration error: %+v\n", err)
 		}
-		ua, cleanup := newResource(uac, &sys, servsTemp)
-		defer cleanup()
+		ua, cleanup := newResource(uac, &sys)
+		cleanups = append(cleanups, cleanup)
+		defer cleanup() // ensure cleanup is called when the program exits
 		sys.UAssets[ua.GetName()] = &ua
 	}
 
@@ -100,7 +110,22 @@ func (ua *UnitAsset) rotation(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println("Error with the setting request of the position ", err)
 		}
-		ua.setPosition(sig)
+		confirmation, err := ua.setPosition(sig)
+		if err != nil {
+			log.Println("Error setting the position ", err)
+		}
+		// return the confirmation of the set operation
+		bestContentType := "application/json" // we know what we sent, so we can respond in the same format
+		responseData, err := usecases.Pack(&confirmation, bestContentType)
+		if err != nil {
+			log.Printf("Error packing response: %v", err)
+		}
+		w.Header().Set("Content-Type", bestContentType)
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(responseData)
+		if err != nil {
+			log.Printf("Error while writing response: %v", err)
+		}
 	default:
 		http.Error(w, "Method is not supported.", http.StatusNotFound)
 	}

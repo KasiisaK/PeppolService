@@ -23,7 +23,7 @@ vendor/
 .vscode/*
 
 # mbaigo
-*.json
+#*.json
 go.mod
 go.sum
 serviceRegistry.db

@@ -1,42 +1,148 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* ===== App Layout ===== */
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* ===== Navigation Buttons ===== */
+
+.nav-buttons {
+  display: flex;
+  gap: 0.5rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+/* Small grey buttons */
+.nav-buttons button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background-color: #f2f2f2;
+  color: #333;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
-.card {
-  padding: 2em;
+.nav-buttons button:hover {
+  background-color: #e0e0e0;
 }
 
-.read-the-docs {
-  color: #888;
+/* Selected tab (Inbox / Exchanges) */
+.nav-buttons button.active {
+  background-color: #d0d0d0;
+  border-color: #999;
+  font-weight: 600;
+}
+
+/* ===== Compose / New PO Button ===== */
+
+.compose-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: none;
+  background-color: #4da3ff;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.compose-button:hover {
+  background-color: #3695f5;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.section-title {
+  text-align: left;
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* ===== Inbox / Exchange Layout ===== */
+
+.inbox-container {
+  display: flex;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 500px;
+}
+
+/* Sidebar */
+.inbox-sidebar {
+  width: 260px;
+  border-right: 1px solid #ddd;
+  background-color: #fafafa;
+  overflow-y: auto;
+}
+
+/* Sidebar list */
+.exchange-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.exchange-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  transition: background-color 0.2s;
+}
+
+.exchange-item:hover {
+  background-color: #f0f0f0;
+}
+
+/* Selected item (darkened like email clients) */
+.exchange-item.selected {
+  background-color: #e0e0e0;
+  font-weight: 600;
+}
+
+/* Right pane */
+.inbox-detail-pane {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  text-align: left;
+}
+
+/* ===== XML & Thread Styling ===== */
+
+.detail-header {
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.xml-block {
+  background-color: #f7f7f7;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+/* Exchange thread messages */
+.thread-message {
+  margin-bottom: 1.5rem;
+}
+
+.no-selection {
+  color: #777;
+  font-style: italic;
+  margin-top: 2rem;
 }

@@ -1,39 +1,42 @@
 import React, { useState, useEffect } from 'react';
 
+// Dummy data for testing
 const dummyThreads = [
   {
     id: 1,
-    company: 'North Pole Supplies',
-    subject: 'Purchase Order – Winter Equipment',
+    company: 'Santa Clause Inc.',
     messages: [
       {
         from: 'You',
-        date: '2025-11-01',
+        date: '2025-12-22',
         content: `<PurchaseOrder>
-  <Item>Snow Plows - 5 units</Item>
-  <Price>5000</Price>
+<Items>
+  <Item>Toy Car - 10 units</Item>
+  <Item>Doll - 15 units</Item>
+</Items>
+<Amount>900.00</Amount>
 </PurchaseOrder>`,
       },
       {
-        from: 'North Pole Supplies',
-        date: '2025-11-02',
-        content: `<CounterProposal>
-  <Item>Snow Plows - 5 units</Item>
-  <Price>5500</Price>
-</CounterProposal>`,
+        from: 'Santa Clause Inc.',
+        date: '2025-11-23',
+        content: `<PurchaseOrder>
+<Items>
+  <Item>Toy Car - 10 units</Item>
+  <Item>Doll - 15 units</Item>
+</Items>
+<Amount>1100.00</Amount>
+</PurchaseOrder>`,
       },
-    ],
-  },
-  {
-    id: 2,
-    company: 'Elf Logistics',
-    subject: 'Bulk Wrapping Paper',
-    messages: [
       {
         from: 'You',
-        date: '2025-10-15',
+        date: '2025-11-24',
         content: `<PurchaseOrder>
-  <Item>Wrapping Paper - 10,000 rolls</Item>
+<Items>
+  <Item>Toy Car - 10 units</Item>
+  <Item>Doll - 15 units</Item>
+</Items>
+<Amount>1000.00</Amount>
 </PurchaseOrder>`,
       },
     ],
@@ -62,7 +65,7 @@ function Exchange() {
             >
               <strong>{thread.company}</strong>
               <br />
-              <small>{thread.subject}</small>
+              <small>{thread.messages[0]?.date}</small>
             </li>
           ))}
         </ul>

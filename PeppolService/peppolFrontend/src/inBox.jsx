@@ -7,15 +7,15 @@ const dummyDocumentPairs = [
     company: 'Santa Clause Inc.',
     date: '2025-12-24',
     po: `<PurchaseOrder>
-  <Items>
-    <Item>Toy Car - 10 units</Item>
-    <Item>Doll - 15 units</Item>
+<Items>
+  <Item>Toy Car - 10 units</Item>
+  <Item>Doll - 15 units</Item>
   </Items>
+<Amount>1000.00</Amount>
 </PurchaseOrder>`,
     invoice: `<Invoice>
-  <InvoiceNumber>INV67890</InvoiceNumber>
-  <Supplier>Company A</Supplier>
-  <Amount>9999.00</Amount>
+  <Supplier>Santa Clause Inc.</Supplier>
+  <Amount>1000.00</Amount>
 </Invoice>`,
   },
   {

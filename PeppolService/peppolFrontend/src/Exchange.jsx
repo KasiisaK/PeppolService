@@ -53,6 +53,7 @@ function Exchange() {
 
   return (
     <div className="inbox-container">
+      {/* Sidebar with list of exchanges (threads) */}
       <div className="inbox-sidebar">
         <ul className="exchange-list">
           {threads.map((thread) => (
@@ -70,26 +71,52 @@ function Exchange() {
           ))}
         </ul>
       </div>
-
+      
+      {/* Detail pane showing the negotiation thread for the selected exchange */}
       <div className="inbox-detail-pane">
-        {selectedThread ? (
-          <>
-            <h2 className="detail-header">
-              {selectedThread.company}
-            </h2>
+          {selectedThread ? (
+            <>
+              <h2 className="detail-header">
+                {selectedThread.company}
+              </h2>
 
-            {selectedThread.messages.map((msg, index) => (
-              <div key={index} className="thread-message">
-                <strong>{msg.from}</strong> — <small>{msg.date}</small>
-                <pre className="xml-block">{msg.content}</pre>
+              {selectedThread.messages.map((msg, index) => (
+                <div key={index} className="thread-message">
+                  <strong>{msg.from}</strong> — <small>{msg.date}</small>
+                  <pre className="xml-block">{msg.content}</pre>
+                </div>
+              ))}
+
+              {/* Action buttons for agreeing/disagreing and making a counter proposal */}
+              <div className="exchange-actions">
+                <button
+                  className="exchange-agree-button"
+                  onClick={() => handleAgree(selectedThread.id)}
+                >
+                  Agree
+                </button>
+
+                <button
+                  className="exchange-disagree-button"
+                  onClick={() => handleDisagree(selectedThread.id)}
+                >
+                  Disagree
+                </button>
+
+                <button
+                  className="exchange-new-offer-button"
+                  onClick={() => handleNewOffer(selectedThread.id)}
+                >
+                  New Offer
+                </button>
               </div>
-            ))}
-          </>
-        ) : (
-          <div className="no-selection">
-            <p>Select an exchange to view the negotiation thread.</p>
-          </div>
-        )}
+            </>
+          ) : (
+            /* Placeholder for when no exchange is selected */
+            <div className="no-selection">
+              <p>Select an exchange to view the negotiation thread.</p>
+            </div>
+          )}
       </div>
     </div>
   );

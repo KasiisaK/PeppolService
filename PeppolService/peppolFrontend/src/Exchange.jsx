@@ -9,7 +9,8 @@ const dummyThreads = [
       {
         from: 'You',
         date: '2025-12-22',
-        content: `<PurchaseOrder>
+        content:
+`<PurchaseOrder>
 <Items>
   <Item>Toy Car - 10 units</Item>
   <Item>Doll - 15 units</Item>
@@ -43,7 +44,7 @@ const dummyThreads = [
   },
 ];
 
-function Exchange() {
+function Exchange({ onNewOffer }) {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
 
@@ -51,9 +52,23 @@ function Exchange() {
     setThreads(dummyThreads);
   }, []);
 
+  const handleNewOffer = (threadId) => {
+    if (onNewOffer) {
+      onNewOffer(threadId);
+    }
+  };
+
+  const handleAgree = (threadId) => {
+    alert(`Agreed on thread ${threadId}`);
+  };
+
+  const handleDisagree = (threadId) => {
+    alert(`Disagreed on thread ${threadId}`);
+  };
+
   return (
     <div className="inbox-container">
-      {/* Sidebar with list of exchanges (threads) */}
+      {/* Sidebar */}
       <div className="inbox-sidebar">
         <ul className="exchange-list">
           {threads.map((thread) => (
@@ -65,58 +80,47 @@ function Exchange() {
               }`}
             >
               <strong>{thread.company}</strong>
-              <br />
-              <small>{thread.messages[0]?.date}</small>
             </li>
           ))}
         </ul>
       </div>
-      
-      {/* Detail pane showing the negotiation thread for the selected exchange */}
+
+      {/* Detail pane */}
       <div className="inbox-detail-pane">
-          {selectedThread ? (
-            <>
-              <h2 className="detail-header">
-                {selectedThread.company}
-              </h2>
+        {selectedThread ? (
+          <>
+            <h2>{selectedThread.company}</h2>
 
-              {selectedThread.messages.map((msg, index) => (
-                <div key={index} className="thread-message">
-                  <strong>{msg.from}</strong> — <small>{msg.date}</small>
-                  <pre className="xml-block">{msg.content}</pre>
-                </div>
-              ))}
-
-              {/* Action buttons for agreeing/disagreing and making a counter proposal */}
-              <div className="exchange-actions">
-                <button
-                  className="exchange-agree-button"
-                  onClick={() => handleAgree(selectedThread.id)}
-                >
-                  Agree
-                </button>
-
-                <button
-                  className="exchange-disagree-button"
-                  onClick={() => handleDisagree(selectedThread.id)}
-                >
-                  Disagree
-                </button>
-
-                <button
-                  className="exchange-new-offer-button"
-                  onClick={() => handleNewOffer(selectedThread.id)}
-                >
-                  New Offer
-                </button>
+            {selectedThread.messages.map((msg, index) => (
+              <div key={index}>
+                <strong>{msg.from}</strong> — {msg.date}
+                <pre className='xml-block'>{msg.content}</pre>
               </div>
-            </>
-          ) : (
-            /* Placeholder for when no exchange is selected */
-            <div className="no-selection">
-              <p>Select an exchange to view the negotiation thread.</p>
+            ))}
+
+            <div className="exchange-actions">
+              <button className='exchange-agree-button'
+                onClick={() => handleAgree(selectedThread.id)}
+              >
+                Agree
+              </button>
+
+              <button className='exchange-disagree-button'
+                onClick={() => handleDisagree(selectedThread.id)}
+              >
+                Disagree
+              </button>
+
+              <button className='exchange-new-offer-button'
+                onClick={() => handleNewOffer(selectedThread.id)}
+              >
+                New Offer
+              </button>
             </div>
-          )}
+          </>
+        ) : (
+          <p>Select an exchange.</p>
+        )}
       </div>
     </div>
   );

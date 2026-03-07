@@ -5,12 +5,12 @@ const dummyThreads = [
   {
     id: 1,
     company: 'Santa Clause Inc.',
+    status: 'Done',
     messages: [
       {
         from: 'You',
         date: '2025-12-22',
-        content:
-`<PurchaseOrder>
+        content: `<PurchaseOrder>
 <Items>
   <Item>Toy Car - 10 units</Item>
   <Item>Doll - 15 units</Item>
@@ -53,9 +53,7 @@ function Exchange({ onNewOffer }) {
   }, []);
 
   const handleNewOffer = (threadId) => {
-    if (onNewOffer) {
-      onNewOffer(threadId);
-    }
+    if (onNewOffer) onNewOffer(threadId);
   };
 
   const handleAgree = (threadId) => {
@@ -67,59 +65,53 @@ function Exchange({ onNewOffer }) {
   };
 
   return (
-    <div className="inbox-container">
+    <div className="master-detail-container">
       {/* Sidebar */}
-      <div className="inbox-sidebar">
-        <ul className="exchange-list">
+      <div className="sidebar">
+        <ul className="list">
           {threads.map((thread) => (
             <li
               key={thread.id}
               onClick={() => setSelectedThread(thread)}
-              className={`exchange-item ${
-                selectedThread?.id === thread.id ? 'selected' : ''
-              }`}
+              className={`list-item ${selectedThread?.id === thread.id ? 'selected' : ''}`}
             >
               <strong>{thread.company}</strong>
+              <br />
+              <small className="thread-status">{"status: " + thread.status}</small>
             </li>
           ))}
         </ul>
       </div>
 
       {/* Detail pane */}
-      <div className="inbox-detail-pane">
+      <div className="detail-pane">
         {selectedThread ? (
           <>
-            <h2>{selectedThread.company}</h2>
+            <h2 className="detail-header">{selectedThread.company}</h2>
 
             {selectedThread.messages.map((msg, index) => (
-              <div key={index}>
+              <div key={index} className="thread-message">
                 <strong>{msg.from}</strong> — {msg.date}
-                <pre className='xml-block'>{msg.content}</pre>
+                <pre className="xml-block">{msg.content}</pre>
               </div>
             ))}
 
-            <div className="exchange-actions">
-              <button className='exchange-agree-button'
-                onClick={() => handleAgree(selectedThread.id)}
-              >
+            <div className="actions-row">
+              <button className="btn btn-success" onClick={() => handleAgree(selectedThread.id)}>
                 Agree
               </button>
-
-              <button className='exchange-disagree-button'
-                onClick={() => handleDisagree(selectedThread.id)}
-              >
+              <button className="btn btn-danger" onClick={() => handleDisagree(selectedThread.id)}>
                 Disagree
               </button>
-
-              <button className='exchange-new-offer-button'
-                onClick={() => handleNewOffer(selectedThread.id)}
-              >
+              <button className="btn btn-primary" onClick={() => handleNewOffer(selectedThread.id)}>
                 New Offer
               </button>
             </div>
           </>
         ) : (
-          <p>Select an exchange.</p>
+          <div className="no-selection">
+            <p>Select an exchange to view details.</p>
+          </div>
         )}
       </div>
     </div>

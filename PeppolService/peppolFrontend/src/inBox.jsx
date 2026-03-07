@@ -44,16 +44,16 @@ function InBox() {
   }, []);
 
   return (
-    <div className="inbox-container">
-      <div className="inbox-sidebar">
-        <ul className="exchange-list">
+    <div className="master-detail-container">
+      <div className="sidebar">
+        <ul className="list">
+          
+          {/* Sidebar items */}
           {documentPairs.map((docPair) => (
             <li
               key={docPair.id}
               onClick={() => setSelectedPair(docPair)}
-              className={`exchange-item ${
-                selectedPair?.id === docPair.id ? 'selected' : ''
-              }`}
+              className={`list-item ${selectedPair?.id === docPair.id ? 'selected' : ''}`}
             >
               <strong>{docPair.company}</strong>
               <br />
@@ -63,16 +63,15 @@ function InBox() {
         </ul>
       </div>
 
-      <div className="inbox-detail-pane">
+      {/* Detail pane */}
+      <div className="detail-pane">
         {selectedPair ? (
           <>
             <h2 className="detail-header">
               {selectedPair.company} | {selectedPair.date}
             </h2>
-
             <h3>Purchase Order</h3>
             <pre className="xml-block">{selectedPair.po}</pre>
-
             <h3>Invoice</h3>
             <pre className="xml-block">{selectedPair.invoice}</pre>
           </>

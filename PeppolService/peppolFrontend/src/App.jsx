@@ -1,18 +1,17 @@
 import { useState } from 'react';
-
-import InBox from './InBox.jsx';
+import InBox from './inBox.jsx';
 import Exchange from './Exchange.jsx';
 import PurchaseOrderForm from './PurchaseOrderForm.jsx';
-import './App.css';
+import './index.css';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'inbox' | 'exchange'>('inbox');
-
+  const [activeTab, setActiveTab] = useState('inbox');
   const [showForm, setShowForm] = useState(false);
   const [formContext, setFormContext] = useState(null);
 
   return (
     <div className="app-container">
+      {/* Top navigation bar */}
       <header className="top-bar">
         <button
           className="compose-button"
@@ -23,32 +22,27 @@ function App() {
         >
           New Purchase Order
         </button>
-
         <div className="nav-buttons">
+          <div className="nav-label">
+            
+          </div>
           <button
             className={activeTab === 'inbox' ? 'active' : ''}
-            onClick={() => {
-              setActiveTab('inbox')
-              setShowForm(false);
-            }}
+            onClick={() => { setActiveTab('inbox'); setShowForm(false); }}
           >
             Inbox
           </button>
-
           <button
             className={activeTab === 'exchange' ? 'active' : ''}
-            onClick={() => {
-              setActiveTab('exchange')
-              setShowForm(false);
-            }}
+            onClick={() => { setActiveTab('exchange'); setShowForm(false); }}
           >
             Exchanges
           </button>
         </div>
       </header>
 
-      <main>
-        {/* Shows purchase order form when showForm is true */}
+      {/* Main content area  can be either: P.O, InBox, Exchange */}
+      <main className="main-content">
         {showForm ? (
           <PurchaseOrderForm
             context={formContext}
@@ -57,13 +51,10 @@ function App() {
         ) : (
           <>
             <h2 className="section-title">
-              {activeTab === 'inbox'
-                ? 'Finalized Exchanges'
-                : 'Active Exchanges'}
+              {activeTab === 'inbox' ? 'Finalized Exchanges' : 'Active Exchanges'}
             </h2>
 
             {activeTab === 'inbox' && <InBox />}
-
             {activeTab === 'exchange' && (
               <Exchange
                 onNewOffer={(threadId) => {

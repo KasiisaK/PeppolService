@@ -1,72 +1,299 @@
-.inbox-container {
-  display: flex;
-  height: 100vh;
-  font-family: Arial, sans-serif;
-}
-
-.inbox-sidebar {
-  width: 300px;
-  border-right: 1px solid #ccc;
-  overflow-y: auto;
-  padding: 10px;
-  background-color: #f8f9fa;
-}
-
-.sidebar-title {
-  margin: 0 0 15px 0;
-  padding: 0 10px;
-  font-size: 1.5rem;
-}
-
-.exchange-list {
-  list-style-type: none;
-  padding: 0;
+/* ==========================================
+   Global resets & typography
+========================================== */
+* {
+  box-sizing: border-box;
   margin: 0;
+  padding: 0;
 }
 
-.exchange-item {
-  padding: 12px 10px;
-  border-bottom: 1px solid #eee;
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f8f9fa;
+  color: #333;
+  min-height: 100vh;
+}
+
+/* ==========================================
+   App layout
+========================================== */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-width: 200vh;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #ddd;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.compose-button {
+  padding: 0.7rem 1.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  background: #4da3ff;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  transition: background 0.2s;
 }
 
-.exchange-item:hover {
-  background-color: #f0f0f0;
+.compose-button:hover {
+  background: #3695f5;
 }
 
-.exchange-item.selected {
-  background-color: #e2e6ea;
-  font-weight: 500;
+.nav-buttons {
+  display: flex;
+  gap: 0.6rem;
+  padding-left: 3rem;
 }
 
-.inbox-detail-pane {
+.nav-buttons button {
+  padding: 0.55rem 1.1rem;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+  color: #444;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.15s;
+}
+
+.nav-buttons button:hover {
+  background: #e8e8e8;
+}
+
+.nav-buttons button.active {
+  background: #d8d8d8;
+  border-color: #aaa;
+  font-weight: 600;
+}
+
+.section-title {
+  font-size: 1.45rem;
+  font-weight: 600;
+  padding: 1.2rem 1.5rem 0.6rem;
+  color: #222;
+}
+
+/* ==========================================
+   Master-detail layout (InBox + Exchange)
+========================================== */
+.master-detail-container {
+  display: flex;
   flex: 1;
-  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0 1.5rem 1.5rem;
+  background: white;
+}
+
+.sidebar {
+  width: 280px;
+  border-right: 1px solid #ddd;
+  background: #fafafa;
   overflow-y: auto;
-  background-color: #fff;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list-item {
+  padding: 0.9rem 1.1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  transition: background 0.18s;
+}
+
+.list-item:hover {
+  background: #f5f5f5;
+}
+
+.list-item.selected {
+  background: #e8f0fe;
+  border-left: 4px solid #4da3ff;
+  padding-left: 1rem;
+}
+
+.detail-pane {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
 }
 
 .detail-header {
-  margin-top: 0;
-  border-bottom: 2px solid #eee;
-  padding-bottom: 10px;
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin-bottom: 1.2rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid #eee;
 }
 
 .xml-block {
-  background-color: #f8f9fa;
-  padding: 15px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  overflow-x: auto;
-  white-space: pre-wrap;
+  background: #f8f9fa;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
   font-family: 'Courier New', monospace;
-  margin-bottom: 30px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  margin: 1rem 0 2rem;
 }
 
 .no-selection {
-  color: #666;
+  height: 50vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #777;
   font-style: italic;
-  margin-top: 50px;
-  text-align: center;
+  font-size: 1.1rem;
+}
+
+/* ==========================================
+   Buttons (shared across app)
+========================================== */
+.btn {
+  padding: 0.65rem 1.3rem;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.btn-primary {
+  background: #4da3ff;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #3695f5;
+}
+
+.btn-success {
+  background: #81e357;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #6ed13f;
+}
+
+.btn-danger {
+  background: #db6f51;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c95e40;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid #4da3ff;
+  color: #4da3ff;
+}
+
+.btn-outline:hover {
+  background: #f0f7ff;
+}
+
+/* ==========================================
+   Form / PurchaseOrderForm shared
+========================================== */
+.form-section {
+  margin-bottom: 2.5rem;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.4rem;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+}
+
+@media (min-width: 992px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+  color: #555;
+}
+
+input, select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #4da3ff;
+  box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.15);
+}
+
+/* Order line row */
+.order-line-row {
+  display: grid;
+  grid-template-columns: 2fr 1.8fr 90px 100px 110px 100px;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.2rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid #eee;
+}
+
+.order-line-row:last-child {
+  border-bottom: none;
+}
+
+/* Actions row */
+.actions-row {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+.po-header {
+  display: flex;
+  justify-content: space-between;
+  margin: 1.5rem 0 0 3rem;
+}
+
+.counter-header {
+  margin-left: 3rem;
+}
+
+.po-form {
+  padding: 0 3rem;
+  padding-top: 3rem;
 }
